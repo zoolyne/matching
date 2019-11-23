@@ -1,0 +1,241 @@
+# ***Problem 2***
+foo <- read.csv("https://course-resources.minerva.kgi.edu/uploaded_files/mke/00086677-3767/peace.csv")
+                
+# extract relevant columns
+foo <- foo[, c(6:8, 11:16, 99, 50, 114, 49, 63, 136, 109, 126, 48, 160, 142, 10)]
+
+# remove 2 rows with missing data (there are better ways to handle missing data)
+foo <- foo[c(-19, -47), ]
+
+# check that all missing data is gone...
+which(is.na(foo) == TRUE)
+
+# take a peek at the data set (identify the columns)
+head(foo)
+
+
+
+#original model
+glm1 = glm(pbs2s3 ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + develop + exp + decade + treaty + untype4, data=foo, family = binomial)
+
+#modified model with the interaction terms exp*untype4 and wardur*logcost instead of untype4*wardur
+glm.modified = glm(pbs2s3 ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + develop + exp + decade + treaty + untype4 + exp:untype4 + wardur:logcost, data=foo, family = binomial)
+
+#call the summaries of the two models
+summary(glm1)
+summary(glm.modified)
+# Call your propensity score model "glm1". 
+# e.g, glm1 <- glm(untype4 ~ wartype + logcost + ... , data = foo, family = binomial)
+
+
+
+#table of the coefficients for the two different models
+table2 <- data.frame(c(coef(glm1), NA, NA), coef(glm.modified))
+table2
+
+
+
+#means of the predictor variables
+m.wartype = mean(foo$wartype)
+m.logcost = mean(foo$logcost)
+m.wardur = mean(foo$wardur)
+m.factnum = mean(foo$factnum)
+m.factnum2 = mean(foo$factnum2)
+m.trnsfcap = mean(foo$trnsfcap)
+m.develop = mean(foo$develop)
+m.exp = mean(foo$exp)
+m.decade = mean(foo$decade)
+m.treaty = mean(foo$treaty)
+
+#we don't need to find the mean for untype4 since this variable represents whether or not the treatment of UN peacekeeping was assigned to this civil war
+
+
+#predict values of pbs2s3 using given values of the predictors
+get_logit <- function(X, coef) {
+  logit <- coef[1] + sum(coef[2:length(coef)]*X)
+  return(exp(logit) / (1 + exp(logit)))
+}
+
+#original model
+
+store.og.tr = rep(0, 315)
+store.og.c = rep(0,315)
+
+for(wardur in 1:315){
+  original.treat = c(m.wartype, m.logcost, wardur, m.factnum, m.factnum2, m.trnsfcap, m.develop, m.exp, m.decade, m.treaty, 1)
+  original.control = c(m.wartype, m.logcost, wardur, m.factnum, m.factnum2, m.trnsfcap, m.develop, m.exp, m.decade, m.treaty, 0)
+  store.og.tr[wardur] = get_logit(original.treat, coef(glm1))
+  store.og.c[wardur] = get_logit(original.control, coef(glm1))
+}
+
+og.treatment.effect = store.og.tr - store.og.c
+
+
+#modified model
+
+store.mod.tr = rep(0, 315)
+store.mod.c = rep(0, 315)
+
+for(wardur in 1:315){
+  mod.treat = c(m.wartype, m.logcost, wardur, m.factnum, m.factnum2, m.trnsfcap, m.develop, m.exp, m.decade, m.treaty, 1, m.exp, wardur*m.logcost)
+  mod.control = c(m.wartype, m.logcost, wardur, m.factnum, m.factnum2, m.trnsfcap, m.develop, m.exp, m.decade, m.treaty, 0, 0, wardur*m.logcost)
+  coefs = coef(glm.modified)
+  store.mod.tr[wardur] = get_logit(mod.treat, coef(glm.modified))
+  store.mod.c[wardur] = get_logit(mod.control, coef(glm.modified))
+}
+
+mod.treatment.effect = store.mod.tr - store.mod.c
+
+
+#plot
+plot(1:315, og.treatment.effect, type = "l", ylim = c(0, 0.8), xlab = NA, ylab = NA)+
+  lines(1:315, mod.treatment.effect, col = "red", ylim = c(0, 0.8))+
+  title(main = "Replication of Causual Effect of Multidimensional Peacekeeping Operations", xlab = "Duration of War (months)", ylab = "Marginal Effects of UN Peacekeeping Operations")
+
+
+
+
+
+#***Problem 3***
+
+
+#reload the data
+foo2 <- read.csv("https://course-resources.minerva.kgi.edu/uploaded_files/mke/00086677-3767/peace.csv")
+foo2 <- foo2[c(-19, -47), ]
+
+Tr <- rep(0, length(foo2$uncint))
+Tr[which(foo2$uncint != "None")] <- 1
+Tr
+
+
+
+
+#***Problem 4***
+
+
+library(Matching)
+library(stats)
+
+#find the variables corresponding to 2 and 5 years after the war
+names(foo2)
+
+foo2$Tr = Tr
+
+#logistic regression
+
+
+balance1 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + develop + exp + decade + treaty, data = foo2, nboots=500)
+
+glm2yr <- glm(formula = pbs2l ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + develop + exp + decade + treaty + Tr, data = foo2, family = "binomial")
+
+Nas = which(is.na(foo2$pbs5l)==T)
+foo3 <- foo2[-Nas,]
+
+glm5yr <- glm(formula =  pbs5l~wartype+logcost+wardur+factnum+factnum2+trnsfcap+develop+exp+decade+treaty+Tr, data = foo3, family = "binomial")
+
+summary(glm2yr)
+summary(glm5yr)
+
+#year 2
+foo2.cf = foo2
+foo2.cf$Tr <- 1 - foo2$Tr
+
+cf.yr2 = predict(glm2yr, newdata = foo2.cf, type = "response")
+unit.te <- rep(NA, nrow(foo2))
+
+mask <- foo2$Tr == 1
+unit.te[mask] <- glm2yr$fitted.values[mask] - cf.yr2[mask]
+unit.te[!mask] <- cf.yr2[!mask] - glm2yr$fitted.values[!mask]
+mean(unit.te[!is.na(unit.te)])
+sd(unit.te[!is.na(unit.te)])
+
+#year 5
+foo5.cf = foo2[!is.na(foo2$pbs5l),]
+foo5.cf$Tr <- 1 - foo2$Tr[-Nas]
+
+cf.yr5 = predict(glm5yr, newdata = foo5.cf, type = "response")
+unit5.te <- rep(NA, nrow(foo5.cf))
+
+mask <- foo2$Tr[-Nas] == 1
+unit5.te[mask] <- glm5yr$fitted.values[mask] - cf.yr5[mask]
+unit5.te[!mask] <- cf.yr5[!mask] - glm5yr$fitted.values[!mask]
+mean(unit5.te[!is.na(unit5.te)])
+sd(unit5.te[!is.na(unit5.te)])
+
+
+
+#propensity score matching
+
+glm.ps <- glm(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+              trnsfcap + develop + exp + decade + treaty, data = foo2, family = binomial)
+summary(glm.ps)
+
+X <- glm.ps$fitted.values
+Y1 <- foo2$pbs2l
+Y2 <- foo2$pbs5l
+m1  <- Match(Y=Y1, Tr=Tr, X=X, M=1, BiasAdjust = T)
+
+str(glm.ps$fitted.values)
+
+summary(m1)
+m1$est.noadj
+balance2 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+                      trnsfcap + develop + exp + decade + treaty, data = foo2, 
+                    match.out = m1, nboots=500)
+
+
+mask <- which(!is.na(Y2))
+m2  <- Match(Y=Y2[mask], Tr=Tr[mask], X=X[mask], M=1, BiasAdjust = T)
+summary(m2)
+m2$est.noadj
+balance3 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+                      trnsfcap + develop + exp + decade + treaty, data = foo2, 
+                    match.out = m2, nboots=500)
+
+
+#genetic matching without propensity scores
+
+X = cbind(foo2$wartype, foo2$logcost, foo2$wardur, foo2$factnum, 
+          foo2$factnum2, foo2$trnsfcap, foo2$develop, foo2$exp, foo2$decade, foo2$treaty)
+
+#2 years
+genout <- GenMatch(Tr=Tr, X=X, M=1,
+                   pop.size=200, max.generations=10, wait.generations=25)
+m3  <- Match(Y=Y1, Tr=Tr, X=X, M=1, BiasAdjust = T, Weight.matrix = genout)
+summary(m3)
+m3$est.noadj
+mb4 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+                      trnsfcap + develop + exp + decade + treaty, data = foo2, 
+                    match.out = m3, nboots=500)
+#5 years
+genout1 <- GenMatch(Tr=Tr[mask], X=X[mask,], M=1,
+                    pop.size=200, max.generations=10, wait.generations=25)
+m4  <- Match(Y=Y2[mask], Tr=Tr[mask], X=X[mask,], M=1, BiasAdjust = T, Weight.matrix = genout1)
+summary(m4)
+m4$est.noadj
+mb5 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+                      trnsfcap + develop + exp + decade + treaty, data = foo2, 
+                    match.out = m3, nboots=500)
+
+#genetic matching with propensity scores
+X2 = cbind(glm.ps$fitted.values, foo2$wartype, foo2$logcost, foo2$wardur, foo2$factnum, 
+          foo2$factnum2, foo2$trnsfcap, foo2$develop, foo2$exp, foo2$decade, foo2$treaty)
+
+
+genout2 <- GenMatch(Tr=Tr, X=X2, M=1,
+                   pop.size=200, max.generations=10, wait.generations=25)
+m5  <- Match(Y=Y1, Tr=Tr, X=X2, M=1, BiasAdjust = T, Weight.matrix = genout)
+summary(m5)
+m5$est.noadj
+mb6 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+                      trnsfcap + develop + exp + decade + treaty, data = foo2, 
+                    match.out = m5, nboots=500)
+
+genout3 <- GenMatch(Tr=Tr[mask], X=X[mask,], M=1,
+                    pop.size=200, max.generations=10, wait.generations=25)
+m6  <- Match(Y=Y2[mask], Tr=Tr[mask], X=X[mask,], M=1, BiasAdjust = T, Weight.matrix = genout1)
+summary(m6)
+m6$est.noadj
+mb7 <- MatchBalance(Tr ~ wartype + logcost + wardur + factnum + factnum2 + 
+                      trnsfcap + develop + exp + decade + treaty, data = foo2, 
+                    match.out = m6, nboots=500)
