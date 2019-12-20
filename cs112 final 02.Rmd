@@ -1,0 +1,212 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+#required packages
+library(foreign)
+library(ivmodel)
+library(AER)
+library(stargazer)
+library(ivpack)
+library(Matching)
+
+#import the data
+count.file = file.choose()
+country = read.dta(count.file)
+
+
+```
+
+
+
+```{r}
+#remove the countries without years of schooling
+
+
+bigguys = which(is.na(country$tyr05_n))
+new.country = country[-bigguys,]
+
+names(new.country)
+```
+
+
+```{r}
+#make the variable name nice
+cd = new.country
+
+
+#table 2 values
+country.ivreg = ivreg(logpgdp05 ~ tyr05_n | tyr05_n, data = cd)
+summary(country.ivreg)
+
+#modify the data of protestant missionaries as described
+#to get closer results to the original paper
+#using alternative definition 1
+cd$protmiss[which(cd$code == "AUS")] = 0.1097143
+cd$protmiss[which(cd$code == "CAN")] = 0.4702282
+cd$protmiss[which(cd$code == "HKG")] = 0.1011323
+cd$protmiss[which(cd$code == "NZL")] = 0.209569
+cd$protmiss[which(cd$code == "USA")] = 0.0530361
+```
+
+```{r}
+#table 4
+#second stage regressions
+
+
+#regression 1
+country.ivreg = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis| protmiss + prienr1900 + dummy_dennis, data = cd)
+summary(country.ivreg)
+
+#regression 2
+country.ivreg2 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lat_abst | protmiss + prienr1900 + dummy_dennis + lat_abst, data = cd)
+summary(country.ivreg2)
+
+#regression 3
+country.ivreg3 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lat_abst + africa +america +asia | protmiss + prienr1900 + dummy_dennis + lat_abst + africa +america +asia , data = cd)
+summary(country.ivreg3)
+
+#regression 4
+country.ivreg4 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lat_abst + africa +america +asia+ f_brit + f_french | protmiss + prienr1900 + dummy_dennis + lat_abst + africa +america +asia + f_brit + f_french, data = cd)
+summary(country.ivreg4)
+
+#regression 5
+country.ivreg5 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lcapped + lpd1500s | protmiss + prienr1900 + dummy_dennis + lcapped + lpd1500s, data = cd)
+summary(country.ivreg5)
+
+#regression 6
+country.ivreg6 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lcapped + lpd1500s+ lat_abst | protmiss + prienr1900 + dummy_dennis + lcapped + lpd1500s+ lat_abst, data = cd)
+summary(country.ivreg6)
+
+#regression 7
+country.ivreg7 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lcapped + lpd1500s+ lat_abst+ africa +america +asia | protmiss + prienr1900 + dummy_dennis + lcapped + lpd1500s+ lat_abst+ africa +america +asia, data = cd)
+summary(country.ivreg7)
+
+#regression 8
+country.ivreg8 = ivreg(logpgdp05 ~ tyr05_n + dummy_dennis + lcapped + lpd1500s+ lat_abst+ africa +america +asia+ f_brit + f_french | protmiss + prienr1900 + dummy_dennis + lcapped + lpd1500s+ lat_abst+ africa +america +asia+ f_brit + f_french, data = cd)
+summary(country.ivreg8)
+
+
+#find standard errors in the iv regressions
+ivse = function(reg) {
+      rob = robust.se(reg)[,2]
+      return(rob)
+  }
+
+#cool way to make tables to extract info
+stargazer(country.ivreg, country.ivreg2, country.ivreg3, country.ivreg4, country.ivreg5, country.ivreg6, country.ivreg7, country.ivreg8, se=list(ivse(country.ivreg)), type = "text", df = F, ci = T)
+
+#Use to get the overidentification p-values
+summary(country.ivreg8, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg7, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg6, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg5, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg4, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg3, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg2, vcov. = sandwich, diagnostics = TRUE)
+summary(country.ivreg1, vcov. = sandwich, diagnostics = TRUE)
+
+```
+
+
+
+```{r}
+#table 4
+#first stage regressions
+
+#regression 1
+first.reg1 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis, data = cd)
+summary(first.reg1)
+
+#regression 2
+first.reg2 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis+lat_abst, data=cd)
+summary(first.reg2)
+
+#regression 3
+first.reg3 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis + lat_abst + africa +america +asia, data=cd)
+summary(first.reg3)
+
+#regression 4
+first.reg4 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis + lat_abst + africa +america +asia+ f_brit + f_french, data=cd)
+summary(first.reg4)
+
+#regression 5
+first.reg5 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis+lcapped+lpd1500s, data = cd)
+summary(first.reg5)
+
+#regression 6
+first.reg6 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis+lcapped+lpd1500s+africa+america+asia , data = cd)
+summary(first.reg6)
+
+#regression 7
+first.reg7 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis+lcapped+lpd1500s+africa+america+asia , data = cd)
+summary(first.reg7)
+
+#regression 8
+first.reg8 = lm(tyr05_n ~ prienr1900+protmiss+dummy_dennis+lcapped+lpd1500s+africa+america+asia+f_brit + f_french, data = cd)
+summary(first.reg8)
+
+
+```
+
+
+```{r}
+
+#preliminary table data for comparison to original paper
+second.stage = c(coef(country.ivreg)[2],coef(country.ivreg2)[2],coef(country.ivreg3)[2],coef(country.ivreg4)[2],coef(country.ivreg5)[2],coef(country.ivreg6)[2],coef(country.ivreg7)[2],coef(country.ivreg8)[2])
+first.stage = c(coef(first.reg1)[2],coef(first.reg2)[2],coef(first.reg3)[2],coef(first.reg4)[2],coef(first.reg5)[2],coef(first.reg6)[2],coef(first.reg7)[2],coef(first.reg8)[2])
+
+rbind(second.stage,first.stage)
+
+
+```
+
+
+
+
+```{r}
+#matching using years of schooling as treatment
+
+#creating treatment and control groups
+years = cd$tyr05_n
+
+mean(years)
+median(years)
+sd(years)
+hist(years)
+
+r.should.be.more.emotional.these.variable.names.get.too.long.and.make.me.upset = which(new.country$tyr05_n > 6)
+wee = r.should.be.more.emotional.these.variable.names.get.too.long.and.make.me.upset
+
+year = years
+
+year[wee] = 1
+year[-wee] = 0
+
+cd2 = data.frame(cd, year)
+str(year)
+```
+
+
+
+
+```{r}
+
+#matching using british colony data
+
+Y = cbind(cd$tyr05_n, cd$ruleoflaw, cd$logpgdp05)
+Tr = year
+X = cbind(cd$africa, cd$lat_abst, cd$asia, cd$lpd1500s, cd$america, cd$prienr1900, cd$protmiss, cd$dummy_dennis, cd$lcapped, cd$f_brit, cd$f_french)
+
+genout1 <- GenMatch(Tr=Tr, X=X, M=1, pop.size = 100, max.generations = 10, wait.generations = 15)
+
+m1  <- Match(Y=cd$tyr05_n, Tr=Tr, X=X, M=1, BiasAdjust = T, Weight.matrix = genout1)
+
+mb1 <- MatchBalance(year~f_brit+f_french+africa+asia+lat_abst+lpd1500s+america+prienr1900+protmiss+dummy_dennis+lcapped, data=cd2, match.out = m1, nboots = 500)
+
+
+```
+
